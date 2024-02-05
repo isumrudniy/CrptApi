@@ -4,10 +4,12 @@ import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
-import okhttp3.*;
-import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -17,13 +19,12 @@ import java.util.concurrent.TimeUnit;
 
 public class CrptApi {
     public static final String URL = "https://ismp.crpt.ru/api/v3/lk/documents/create";
-    private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json");
-    private final OkHttpClient client;
+//    private static final MediaType JSON_MEDIA_TYPE = MediaType.parseMediaType("application/json");
+    private final HttpClient httpClient = HttpClient.newBuilder().build();
     private final Semaphore requestSemaphore;
     private final Gson gson;
 
     public CrptApi(TimeUnit timeUnit, int requestLimit) {
-        this.client = new OkHttpClient();
         this.requestSemaphore = new Semaphore(requestLimit);
         this.gson = new Gson();
         scheduleRequestLimitReset(timeUnit);
@@ -34,47 +35,38 @@ public class CrptApi {
         scheduler.scheduleAtFixedRate(requestSemaphore::drainPermits, 0, 1, timeUnit);
     }
 
-    public void createDocument(Document document, String sign) {
+    public void createAndSendDocument(Document document, String sign) {
         try {
             requestSemaphore.acquire();
             String json = gson.toJson(SignedDocument.builder()
                     .document(document)
                     .sign(sign)
                     .build());
-            Request request = buildRequest(json);
-            client.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(@NotNull Call call, @NotNull IOException e) {
-                    requestSemaphore.release();
-                    //обработка ошибки
-                }
-
-                @Override
-                public void onResponse(@NotNull Call call, @NotNull Response response) {
-                    requestSemaphore.release();
-                    //обработка ответа
-                }
-            });
-        } catch (InterruptedException e) {
+            String response = httpClient.send(buildRequest(json), HttpResponse.BodyHandlers.ofString()).body();
+            // обработка ответа
+            requestSemaphore.release();
+        } catch (InterruptedException | IOException e) {
             Thread.currentThread().interrupt();
+            requestSemaphore.release();
         }
     }
 
     @Builder
     @RequiredArgsConstructor
-    private static class SignedDocument {
+    private class SignedDocument {
         private final Document document;
         private final String sign;
     }
 
-    private Request buildRequest(String json) {
-        return new Request.Builder()
-                .url(URL)
-                .post(RequestBody.create(json, JSON_MEDIA_TYPE))
+    private HttpRequest buildRequest(String json) {
+        return HttpRequest.newBuilder()
+                .uri(URI.create(URL))
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .header("Context-Type", "application/json")
                 .build();
     }
 
-    public static class Document {
+    public class Document {
         private Description description;
         @SerializedName("doc_id")
         private String docId;
