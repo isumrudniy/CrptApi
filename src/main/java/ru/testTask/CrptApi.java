@@ -19,20 +19,20 @@ import java.util.concurrent.TimeUnit;
 
 public class CrptApi {
     public static final String URL = "https://ismp.crpt.ru/api/v3/lk/documents/create";
-//    private static final MediaType JSON_MEDIA_TYPE = MediaType.parseMediaType("application/json");
     private final HttpClient httpClient = HttpClient.newBuilder().build();
     private final Semaphore requestSemaphore;
     private final Gson gson;
+    private final ScheduledExecutorService scheduler;
 
     public CrptApi(TimeUnit timeUnit, int requestLimit) {
         this.requestSemaphore = new Semaphore(requestLimit);
         this.gson = new Gson();
+        this.scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduleRequestLimitReset(timeUnit);
     }
 
     private void scheduleRequestLimitReset(TimeUnit timeUnit) {
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.scheduleAtFixedRate(requestSemaphore::drainPermits, 0, 1, timeUnit);
+        scheduler.scheduleAtFixedRate(requestSemaphore::release, 0, 1, timeUnit);
     }
 
     public void createAndSendDocument(Document document, String sign) {
@@ -44,9 +44,9 @@ public class CrptApi {
                     .build());
             String response = httpClient.send(buildRequest(json), HttpResponse.BodyHandlers.ofString()).body();
             // обработка ответа
-            requestSemaphore.release();
         } catch (InterruptedException | IOException e) {
             Thread.currentThread().interrupt();
+        } finally {
             requestSemaphore.release();
         }
     }
@@ -62,7 +62,7 @@ public class CrptApi {
         return HttpRequest.newBuilder()
                 .uri(URI.create(URL))
                 .POST(HttpRequest.BodyPublishers.ofString(json))
-                .header("Context-Type", "application/json")
+                .header("Content-Type", "application/json")
                 .build();
     }
 
