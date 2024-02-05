@@ -32,7 +32,7 @@ public class CrptApi {
     }
 
     private void scheduleRequestLimitReset(TimeUnit timeUnit) {
-        scheduler.scheduleAtFixedRate(requestSemaphore::release, 0, 1, timeUnit);
+        scheduler.scheduleAtFixedRate(requestSemaphore::release, 0, 10, timeUnit);
     }
 
     public void createAndSendDocument(Document document, String sign) {
@@ -42,7 +42,7 @@ public class CrptApi {
                     .document(document)
                     .sign(sign)
                     .build());
-            String response = httpClient.send(buildRequest(json), HttpResponse.BodyHandlers.ofString()).body();
+            HttpResponse response = httpClient.send(buildRequest(json), HttpResponse.BodyHandlers.ofString());
             // обработка ответа
         } catch (InterruptedException | IOException e) {
             Thread.currentThread().interrupt();
@@ -66,7 +66,8 @@ public class CrptApi {
                 .build();
     }
 
-    public class Document {
+    @Builder
+    public static class Document {
         private Description description;
         @SerializedName("doc_id")
         private String docId;
@@ -118,7 +119,6 @@ public class CrptApi {
             @SerializedName("uitu_code")
             private String uituCode;
         }
-
     }
 
 }
