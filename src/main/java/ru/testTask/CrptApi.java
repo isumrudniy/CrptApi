@@ -66,8 +66,7 @@ public class CrptApi {
                 .build();
     }
 
-    @Builder
-    public static class Document {
+    public class Document {
         private Description description;
         @SerializedName("doc_id")
         private String docId;
